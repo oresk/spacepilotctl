@@ -28,21 +28,8 @@ DISPLAY_INVERTED  = 0x01
 DISPLAY_BL_OFF    = 0x02
 DISPLAY_CLOCK     = 0x04
 
-# Firmware bug: on early SpacePilot firmware, starting at column >= 120 is off by one.
-def _lcd_col(column: int) -> int:
-    return column - 1 if column >= 120 else column
-
 from easyhid import Enumeration
 from easyhid import HIDDevice
-
-en = Enumeration()
-devices = en.find(vid=VENDOR_ID, pid=PRODUCT_ID)
-if not devices:
-    print("SpacePilot LCD device not found", file=sys.stderr)
-    sys.exit(1)
-
-lcd_device = devices[0]
-lcd_device.open()
 
 
 def set_ring_light(dev: HIDDevice, mask: int) -> None:
@@ -124,7 +111,7 @@ def write_png(dev: HIDDevice, png_path: Path | str, verbose: bool = False) -> bo
     return True
 
 
-if __name__ == "__main__":
+def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="SpacePilot LCD controller")
@@ -144,13 +131,22 @@ if __name__ == "__main__":
                         help="Print timing info")
     args = parser.parse_args()
 
+    en = Enumeration()
+    devices = en.find(vid=VENDOR_ID, pid=PRODUCT_ID)
+    if not devices:
+        print("SpacePilot LCD device not found", file=sys.stderr)
+        sys.exit(1)
+
+    dev = devices[0]
+    dev.open()
+
     if not any([args.ring is not None, args.backlight, args.invert, args.clock, args.image, args.clear]):
         parser.print_help()
-        lcd_device.close()
+        dev.close()
         sys.exit(0)
 
     if args.ring is not None:
-        set_ring_light(lcd_device, args.ring)
+        set_ring_light(dev, args.ring)
 
     if args.backlight or args.invert or args.clock:
         mode = DISPLAY_NORMAL
@@ -160,15 +156,19 @@ if __name__ == "__main__":
             mode |= DISPLAY_INVERTED
         if args.clock:
             mode |= DISPLAY_CLOCK
-        set_display_mode(lcd_device, mode)
+        set_display_mode(dev, mode)
 
     if args.clear:
-        clear(lcd_device)
+        clear(dev)
 
     if args.image:
-        ok = write_png(lcd_device, args.image, verbose=args.verbose)
+        ok = write_png(dev, args.image, verbose=args.verbose)
         if not ok:
-            lcd_device.close()
+            dev.close()
             sys.exit(1)
 
-    lcd_device.close()
+    dev.close()
+
+
+if __name__ == "__main__":
+    main()

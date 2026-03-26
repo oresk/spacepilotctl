@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spacepilotctl"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "easyhid",
+    "opencv-python",
+]
+
+[tool.setuptools]
+py-modules = ["spacepilotctl"]
+
+[project.scripts]
+spacepilotctl = "spacepilotctl:main"

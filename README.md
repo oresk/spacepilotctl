@@ -85,42 +85,50 @@ depends entirely on report count, not data size.
 - `spacenavd` can run concurrently — it does not hold an exclusive lock on the hidraw device.
 - When the HID connection is closed, the firmware takes over (shows built-in clock, resets backlight).
 
-## Setup
+## Install
+
+```bash
+pip install .
+```
+
+Or into a virtualenv:
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install easyhid opencv-python
+.venv/bin/pip install .
 ```
+
+This installs the `spacepilotctl` command.
 
 ## Usage
 
 ```bash
 # All ring LEDs on
-.venv/bin/python lcd.py -r 15
+spacepilotctl -r 15
 
 # Just 12 and 6 o'clock
-.venv/bin/python lcd.py -r 0b0101
+spacepilotctl -r 0b0101
 
 # Ring off
-.venv/bin/python lcd.py -r 0
+spacepilotctl -r 0
 
 # Backlight on, clear display, show image
-.venv/bin/python lcd.py -b on -c -m images/test.png
+spacepilotctl -b on -c -m images/test.png
 
 # Backlight off
-.venv/bin/python lcd.py -b off
+spacepilotctl -b off
 
 # Invert display
-.venv/bin/python lcd.py -b on -i on
+spacepilotctl -b on -i on
 
 # Show firmware clock
-.venv/bin/python lcd.py --clock
+spacepilotctl --clock
 
 # Verbose timing output
-.venv/bin/python lcd.py -m images/test.png -v
+spacepilotctl -m images/test.png -v
 
 # Full help
-.venv/bin/python lcd.py --help
+spacepilotctl --help
 ```
 
 All display control flags (`-b`, `-i`, `--clock`) must be fully specified each invocation
@@ -137,5 +145,6 @@ since the register is write-only and state cannot be read back from the device.
 
 | File | Description |
 |------|-------------|
-| `lcd.py` | Library + CLI |
+| `spacepilotctl.py` | Library + CLI |
+| `pyproject.toml` | Package definition |
 | `images/` | Sample and test images |
