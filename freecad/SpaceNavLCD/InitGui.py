@@ -5,11 +5,11 @@ active workbench name whenever the workbench changes.
 """
 
 import socket
-import tempfile
 from pathlib import Path
 
 SOCKET_PATH = "/run/spacenavlcdd.sock"
-_tmp_image = Path(tempfile.gettempdir()) / "spacenavlcd_freecad.png"
+_cache_dir = Path.home() / ".cache" / "spacenavlcd"
+_tmp_image = _cache_dir / "freecad.png"
 
 
 def _send(cmd: str) -> None:
@@ -41,6 +41,7 @@ def _render_logo() -> str:
     painter.drawPixmap(x, y, pixmap)
     painter.end()
 
+    _cache_dir.mkdir(parents=True, exist_ok=True)
     img.save(str(_tmp_image))
     return str(_tmp_image)
 
@@ -60,6 +61,7 @@ def _render_workbench(text: str) -> str:
     painter.drawText(QRect(0, 0, 240, 64), Qt.AlignmentFlag.AlignCenter, text)
     painter.end()
 
+    _cache_dir.mkdir(parents=True, exist_ok=True)
     img.save(str(_tmp_image))
     return str(_tmp_image)
 
