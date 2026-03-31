@@ -68,13 +68,9 @@ def _rle(data: bytes) -> list[tuple[int, int]]:
     return runs
 
 
-def write_png(dev: HIDDevice, png_path: Path | str, verbose: bool = False) -> bool:
-    """Write a 240x64 PNG image to the SpacePilot LCD using packed reports."""
-    img = cv2.imread(str(png_path), cv2.IMREAD_GRAYSCALE)
-    if img is None:
-        print(f"Failed to read image: {png_path}", file=sys.stderr)
-        return False
-
+def write_image(dev: HIDDevice, img, verbose: bool = False) -> bool:
+    """Write a 240x64 grayscale numpy array to the SpacePilot LCD."""
+    import numpy as np
     if img.shape != (64, 240):
         print(f"Image has wrong shape: {img.shape}, expected (64, 240)", file=sys.stderr)
         return False
@@ -106,9 +102,29 @@ def write_png(dev: HIDDevice, png_path: Path | str, verbose: bool = False) -> bo
 
     if verbose:
         elapsed = time.perf_counter() - t0
-        print(f"{Path(png_path).name}: {elapsed*1000:.0f}ms  {n_reports} reports", file=sys.stderr)
+        print(f"{elapsed*1000:.0f}ms  {n_reports} reports", file=sys.stderr)
 
     return True
+
+
+def write_png(dev: HIDDevice, png_path: Path | str, verbose: bool = False) -> bool:
+    """Write a 240x64 PNG file to the SpacePilot LCD."""
+    img = cv2.imread(str(png_path), cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        print(f"Failed to read image: {png_path}", file=sys.stderr)
+        return False
+    return write_image(dev, img, verbose=verbose)
+
+
+def write_png_bytes(dev: HIDDevice, data: bytes, verbose: bool = False) -> bool:
+    """Write a 240x64 PNG from raw bytes to the SpacePilot LCD."""
+    import numpy as np
+    arr = np.frombuffer(data, dtype=np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        print("Failed to decode image data", file=sys.stderr)
+        return False
+    return write_image(dev, img, verbose=verbose)
 
 
 def main():

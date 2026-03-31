@@ -24,7 +24,7 @@ import tomllib
 from pathlib import Path
 
 from spacepilotctl import (
-    set_ring_light, set_display_mode, clear, write_png,
+    set_ring_light, set_display_mode, clear, write_png, write_png_bytes,
     DISPLAY_NORMAL, DISPLAY_BL_OFF, DISPLAY_INVERTED, DISPLAY_CLOCK,
     VENDOR_ID, PRODUCT_ID,
 )
@@ -133,7 +133,12 @@ class SpaceNavLCDDaemon:
 
                 async with self._lock:
                     try:
-                        if verb == "CLEAR":
+                        if verb == "BIMAGE":
+                            length = int(arg)
+                            data = await reader.readexactly(length)
+                            if not write_png_bytes(self.dev, data):
+                                raise ValueError("failed to decode image data")
+                        elif verb == "CLEAR":
                             clear(self.dev)
                         elif verb == "IMAGE":
                             if not write_png(self.dev, arg):

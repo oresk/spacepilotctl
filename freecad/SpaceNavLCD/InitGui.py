@@ -4,98 +4,135 @@ Shows the FreeCAD logo on startup, then updates the LCD with the
 active workbench name whenever the workbench changes.
 """
 
-import socket
-from pathlib import Path
 
-SOCKET_PATH = "/run/spacenavlcdd.sock"
-_cache_dir = Path.home() / ".cache" / "spacenavlcd"
-_tmp_image = _cache_dir / "freecad.png"
+def _init():
+    import os
+    import socket
+    import traceback
 
+    SOCKET = "/run/spacenavlcdd.sock"
+    LOG    = os.path.join(os.path.expanduser("~"), ".cache", "spacenavlcd", "debug.log")
 
-def _send(cmd: str) -> None:
-    try:
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
-            s.settimeout(1.0)
-            s.connect(SOCKET_PATH)
-            s.sendall((cmd + "\n").encode())
-            s.recv(256)
-    except Exception:
-        pass  # daemon not running or device not connected — ignore silently
+    def log(msg):
+        os.makedirs(os.path.dirname(LOG), exist_ok=True)
+        with open(LOG, "a") as f:
+            f.write(msg + "\n")
 
+    def send(cmd):
+        log(f"send: {cmd}")
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+                s.settimeout(2.0)
+                s.connect(SOCKET)
+                s.sendall((cmd + "\n").encode())
+                log(f"response: {s.recv(256)}")
+        except Exception as e:
+            log(f"send error: {e}\n{traceback.format_exc()}")
 
-def _render_logo() -> str:
-    """Render the FreeCAD window icon centered on a 240x64 grayscale image."""
-    from PySide6.QtCore import QSize
-    from PySide6.QtGui import QColor, QImage, QPainter
-    import FreeCADGui
+    def send_image(img):
+        try:
+            from PySide6.QtCore import QBuffer, QByteArray, QIODevice
+            buf = QBuffer()
+            buf.open(QIODevice.OpenModeFlag.WriteOnly)
+            img.save(buf, "PNG")
+            data = bytes(buf.data())
+            log(f"send_image: {len(data)} bytes")
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+                s.settimeout(2.0)
+                s.connect(SOCKET)
+                s.sendall(f"BIMAGE {len(data)}\n".encode())
+                s.sendall(data)
+                log(f"response: {s.recv(256)}")
+        except Exception as e:
+            log(f"send_image error: {e}\n{traceback.format_exc()}")
 
-    img = QImage(240, 64, QImage.Format.Format_Grayscale8)
-    img.fill(QColor(0, 0, 0))
+    def render_logo():
+        from PySide6.QtCore import QSize
+        from PySide6.QtGui import QColor, QImage, QPainter
+        import FreeCADGui
 
-    icon = FreeCADGui.getMainWindow().windowIcon()
-    pixmap = icon.pixmap(QSize(60, 60))
+        src = QImage(240, 64, QImage.Format.Format_ARGB32)
+        src.fill(QColor(0, 0, 0, 0))
+        pixmap = FreeCADGui.getMainWindow().windowIcon().pixmap(QSize(60, 60))
+        painter = QPainter(src)
+        painter.drawPixmap((240 - 60) // 2, (64 - 60) // 2, pixmap)
+        painter.end()
 
-    painter = QPainter(img)
-    x = (240 - pixmap.width()) // 2
-    y = (64 - pixmap.height()) // 2
-    painter.drawPixmap(x, y, pixmap)
-    painter.end()
+        out = QImage(240, 64, QImage.Format.Format_Grayscale8)
+        out.fill(QColor(0, 0, 0))
+        for y in range(64):
+            for x in range(240):
+                c = src.pixelColor(x, y)
+                lum = 255 if c.alpha() < 64 else (c.red() * 299 + c.green() * 587 + c.blue() * 114) // 1000
+                if lum > 160:
+                    out.setPixelColor(x, y, QColor(255, 255, 255))
+        return out
 
-    _cache_dir.mkdir(parents=True, exist_ok=True)
-    img.save(str(_tmp_image))
-    return str(_tmp_image)
+    def render_workbench(text):
+        from PySide6.QtCore import Qt, QRect
+        from PySide6.QtGui import QColor, QFont, QImage, QPainter
 
+        img = QImage(240, 64, QImage.Format.Format_Grayscale8)
+        img.fill(QColor(0, 0, 0))
+        painter = QPainter(img)
+        painter.setFont(QFont("Sans Serif", 16, QFont.Weight.Bold))
+        painter.setPen(QColor(255, 255, 255))
+        painter.drawText(QRect(0, 0, 240, 64), Qt.AlignmentFlag.AlignCenter, text)
+        painter.end()
+        return img
 
-def _render_workbench(text: str) -> str:
-    """Render workbench name centered on a 240x64 grayscale image."""
-    from PySide6.QtCore import Qt, QRect
-    from PySide6.QtGui import QColor, QFont, QImage, QPainter
+    def show_current_workbench():
+        import FreeCADGui
+        wb = FreeCADGui.activeWorkbench()
+        if wb:
+            on_workbench_activated(type(wb).__name__)
 
-    img = QImage(240, 64, QImage.Format.Format_Grayscale8)
-    img.fill(QColor(0, 0, 0))
+    def on_workbench_activated(name):
+        import FreeCADGui
+        try:
+            wb = FreeCADGui.getWorkbench(name)
+            display = getattr(wb, "MenuText", name) if wb else name
+        except Exception:
+            display = name
+        send_image(render_workbench(display))
 
-    painter = QPainter(img)
-    font = QFont("Sans Serif", 16, QFont.Weight.Bold)
-    painter.setFont(font)
-    painter.setPen(QColor(255, 255, 255))
-    painter.drawText(QRect(0, 0, 240, 64), Qt.AlignmentFlag.AlignCenter, text)
-    painter.end()
+    def setup():
+        import FreeCAD
+        import FreeCADGui
 
-    _cache_dir.mkdir(parents=True, exist_ok=True)
-    img.save(str(_tmp_image))
-    return str(_tmp_image)
+        log("setup called")
+        mw = FreeCADGui.getMainWindow()
+        if mw is None:
+            log("main window is None")
+            return
 
+        try:
+            mw.workbenchActivated.connect(on_workbench_activated)
+            log("signal connected")
+        except Exception as e:
+            log(f"signal connect failed: {e}\n{traceback.format_exc()}")
+            FreeCAD.Console.PrintWarning(f"SpaceNavLCD: {e}\n")
 
-def _on_workbench_activated(name: str) -> None:
-    import FreeCADGui
-    try:
-        wb = FreeCADGui.getWorkbench(name)
-        display = getattr(wb, "MenuText", name) if wb else name
-    except Exception:
-        display = name
-    _send(f"IMAGE {_render_workbench(display)}")
+        class DocObserver:
+            def slotActivatedDocument(self, doc):
+                show_current_workbench()
+            def slotCreatedDocument(self, doc):
+                show_current_workbench()
+            def slotOpenedDocument(self, doc):
+                show_current_workbench()
 
+        observer = DocObserver()
+        FreeCAD.addDocumentObserver(observer)
+        log("document observer added")
 
-def _setup() -> None:
-    import FreeCAD
-    import FreeCADGui
+        try:
+            send_image(render_logo())
+        except Exception as e:
+            log(f"render failed: {e}\n{traceback.format_exc()}")
 
-    mw = FreeCADGui.getMainWindow()
-    if mw is None:
-        return
-
-    try:
-        mw.workbenchActivated.connect(_on_workbench_activated)
-    except Exception as e:
-        FreeCAD.Console.PrintWarning(f"SpaceNavLCD: failed to connect signal: {e}\n")
-
-    # Show FreeCAD logo on startup
-    _send(f"IMAGE {_render_logo()}")
-
-
-def _init() -> None:
+    log("loading")
     from PySide6.QtCore import QTimer
-    QTimer.singleShot(500, _setup)
+    QTimer.singleShot(500, setup)
 
 
 _init()
