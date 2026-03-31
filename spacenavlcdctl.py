@@ -47,7 +47,7 @@ def main() -> None:
     if args.cmd == "clear":
         print(send("CLEAR"))
     elif args.cmd == "image":
-        print(send(f"IMAGE {args.path}"))
+        print(send(f"IMAGE {Path(args.path).resolve()}"))
     elif args.cmd == "leds":
         print(send(f"LEDS {args.mask}"))
     elif args.cmd == "backlight":
