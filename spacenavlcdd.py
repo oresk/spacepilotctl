@@ -123,6 +123,12 @@ class SpaceNavLCDDaemon:
                         else:
                             raise ValueError(f"unknown command: {verb}")
                         writer.write(b"OK\n")
+                    except OSError as e:
+                        # HID write failed — device likely disconnected
+                        print(f"spacenavlcdd: device error: {e}", file=sys.stderr)
+                        writer.write(b"ERROR device disconnected\n")
+                        await writer.drain()
+                        sys.exit(1)
                     except Exception as e:
                         writer.write(f"ERROR {e}\n".encode())
                     await writer.drain()
@@ -135,10 +141,14 @@ async def run() -> None:
     daemon = SpaceNavLCDDaemon(config)
 
     if not daemon.open_device():
-        print("spacenavlcdd: device not found", file=sys.stderr)
+        print("spacenavlcdd: device not found, will retry", file=sys.stderr)
         sys.exit(1)
 
-    daemon.apply_on_connect()
+    try:
+        daemon.apply_on_connect()
+    except OSError as e:
+        print(f"spacenavlcdd: device error on connect: {e}", file=sys.stderr)
+        sys.exit(1)
 
     if SOCKET_PATH.exists():
         SOCKET_PATH.unlink()
