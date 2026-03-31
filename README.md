@@ -46,7 +46,7 @@ The plugin watches the active workbench and displays its name on the LCD.
 cp -r freecad/SpaceNavLCD ~/.var/app/org.freecad.FreeCAD/data/FreeCAD/Mod/
 
 # Allow FreeCAD to access the daemon socket
-flatpak override --user --filesystem=/run org.freecad.FreeCAD
+flatpak override --user --filesystem=/run/spacenavlcdd.sock org.freecad.FreeCAD
 ```
 
 **Install (native FreeCAD):**

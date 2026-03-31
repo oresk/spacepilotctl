@@ -1,7 +1,7 @@
 """SpaceNavLCD — FreeCAD plugin for spacenavlcdd.
 
-Watches the active workbench and sends the workbench name to the
-SpacePilot LCD via the spacenavlcdd daemon socket.
+Shows the FreeCAD logo on startup, then updates the LCD with the
+active workbench name whenever the workbench changes.
 """
 
 import socket
@@ -23,8 +23,30 @@ def _send(cmd: str) -> None:
         pass  # daemon not running or device not connected — ignore silently
 
 
-def _render(text: str) -> str:
-    """Render text centered on a 240x64 grayscale PNG using PySide6."""
+def _render_logo() -> str:
+    """Render the FreeCAD window icon centered on a 240x64 grayscale image."""
+    from PySide6.QtCore import QSize
+    from PySide6.QtGui import QColor, QImage, QPainter
+    import FreeCADGui
+
+    img = QImage(240, 64, QImage.Format.Format_Grayscale8)
+    img.fill(QColor(0, 0, 0))
+
+    icon = FreeCADGui.getMainWindow().windowIcon()
+    pixmap = icon.pixmap(QSize(60, 60))
+
+    painter = QPainter(img)
+    x = (240 - pixmap.width()) // 2
+    y = (64 - pixmap.height()) // 2
+    painter.drawPixmap(x, y, pixmap)
+    painter.end()
+
+    img.save(str(_tmp_image))
+    return str(_tmp_image)
+
+
+def _render_workbench(text: str) -> str:
+    """Render workbench name centered on a 240x64 grayscale image."""
     from PySide6.QtCore import Qt, QRect
     from PySide6.QtGui import QColor, QFont, QImage, QPainter
 
@@ -49,7 +71,7 @@ def _on_workbench_activated(name: str) -> None:
         display = getattr(wb, "MenuText", name) if wb else name
     except Exception:
         display = name
-    _send(f"IMAGE {_render(display)}")
+    _send(f"IMAGE {_render_workbench(display)}")
 
 
 def _setup() -> None:
@@ -64,17 +86,13 @@ def _setup() -> None:
         mw.workbenchActivated.connect(_on_workbench_activated)
     except Exception as e:
         FreeCAD.Console.PrintWarning(f"SpaceNavLCD: failed to connect signal: {e}\n")
-        return
 
-    # Show the current workbench immediately
-    wb = FreeCADGui.activeWorkbench()
-    if wb:
-        _on_workbench_activated(type(wb).__name__)
+    # Show FreeCAD logo on startup
+    _send(f"IMAGE {_render_logo()}")
 
 
 def _init() -> None:
     from PySide6.QtCore import QTimer
-    # Defer until the main window is fully initialised
     QTimer.singleShot(500, _setup)
 
 
