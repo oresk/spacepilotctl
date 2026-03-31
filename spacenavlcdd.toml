@@ -1,0 +1,15 @@
+# spacenavlcdd configuration
+# Copy to ~/.config/spacenavlcdd.toml
+
+[on_connect]
+# Backlight state on startup: "on" or "off"
+backlight = "on"
+
+# What to show on the LCD when the device connects:
+#   "clear"   — blank the display
+#   "image"   — show the image specified below
+#   "nothing" — leave display as-is
+action = "clear"
+
+# Path to a 240x64 PNG, used when action = "image"
+# image = "/home/user/pictures/spacepilot.png"

@@ -1,0 +1,12 @@
+[Unit]
+Description=SpacePilot LCD daemon
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/spacenavlcdd
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
