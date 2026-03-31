@@ -1,7 +1,8 @@
 """SpaceNavLCD — FreeCAD plugin for spacenavlcdd.
 
-Shows the FreeCAD logo on startup, then updates the LCD with the
-active workbench name whenever the workbench changes.
+Shows the FreeCAD logo on startup, then a split layout:
+  - Upper 40px: active workbench name
+  - Lower 24px: 6 button labels read from Spaceball preferences
 """
 
 
@@ -18,33 +19,47 @@ def _init():
         with open(LOG, "a") as f:
             f.write(msg + "\n")
 
-    def send(cmd):
-        log(f"send: {cmd}")
-        try:
-            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
-                s.settimeout(2.0)
-                s.connect(SOCKET)
-                s.sendall((cmd + "\n").encode())
-                log(f"response: {s.recv(256)}")
-        except Exception as e:
-            log(f"send error: {e}\n{traceback.format_exc()}")
-
     def send_image(img):
         try:
-            from PySide6.QtCore import QBuffer, QByteArray, QIODevice
+            from PySide6.QtCore import QBuffer, QIODevice
             buf = QBuffer()
             buf.open(QIODevice.OpenModeFlag.WriteOnly)
             img.save(buf, "PNG")
             data = bytes(buf.data())
-            log(f"send_image: {len(data)} bytes")
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
                 s.settimeout(2.0)
                 s.connect(SOCKET)
                 s.sendall(f"BIMAGE {len(data)}\n".encode())
                 s.sendall(data)
-                log(f"response: {s.recv(256)}")
+                s.recv(256)
         except Exception as e:
             log(f"send_image error: {e}\n{traceback.format_exc()}")
+
+    def get_button_labels():
+        """Read button mappings from FreeCAD Spaceball preferences.
+
+        Format: groups named "0".."5", each with Command and Description fields.
+        """
+        import FreeCAD
+        try:
+            params = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Spaceball/Buttons")
+            labels = []
+            for i in range(6):
+                group = params.GetGroup(str(i))
+                cmd = group.GetString("Command", "")
+                if cmd:
+                    # "Std_ViewFront" → "Front", "PartDesign_Pad" → "Pad"
+                    # "Sketcher_CreateRectangle_Center" → "Rect" (last meaningful part)
+                    part = cmd.split("_")[-1]
+                    if part.startswith("View"):
+                        part = part[4:]
+                    labels.append(part[:7])
+                else:
+                    labels.append("")
+            return labels
+        except Exception as e:
+            log(f"get_button_labels error: {e}")
+            return [""] * 6
 
     def render_logo():
         from PySide6.QtCore import QSize
@@ -68,18 +83,47 @@ def _init():
                     out.setPixelColor(x, y, QColor(255, 255, 255))
         return out
 
-    def render_workbench(text):
+    def render_layout(workbench, button_labels):
+        """Render split layout: workbench name top, 6 button labels bottom."""
         from PySide6.QtCore import Qt, QRect
         from PySide6.QtGui import QColor, QFont, QImage, QPainter
 
         img = QImage(240, 64, QImage.Format.Format_Grayscale8)
         img.fill(QColor(0, 0, 0))
         painter = QPainter(img)
-        painter.setFont(QFont("Sans Serif", 16, QFont.Weight.Bold))
-        painter.setPen(QColor(255, 255, 255))
-        painter.drawText(QRect(0, 0, 240, 64), Qt.AlignmentFlag.AlignCenter, text)
+        white = QColor(255, 255, 255)
+
+        # Upper section: workbench name (40px tall)
+        painter.setFont(QFont("Sans Serif", 14, QFont.Weight.Bold))
+        painter.setPen(white)
+        painter.drawText(QRect(0, 0, 240, 40), Qt.AlignmentFlag.AlignCenter, workbench)
+
+        # Divider line
+        painter.drawLine(0, 40, 239, 40)
+
+        # Lower section: 6 button cells (40px wide, 23px tall each)
+        btn_font = QFont("Sans Serif", 6)
+        num_font = QFont("Sans Serif", 5)
+        cell_w = 40
+
+        for i, label in enumerate(button_labels[:6]):
+            x = i * cell_w
+            # Vertical divider (skip leftmost)
+            if i > 0:
+                painter.drawLine(x, 41, x, 63)
+            # Button number (top-left of cell)
+            painter.setFont(num_font)
+            painter.drawText(QRect(x + 2, 42, 10, 10), Qt.AlignmentFlag.AlignLeft, str(i + 1))
+            # Label (centered in cell)
+            painter.setFont(btn_font)
+            painter.drawText(QRect(x, 51, cell_w, 12), Qt.AlignmentFlag.AlignCenter, label)
+
         painter.end()
         return img
+
+    def show_layout(workbench_display):
+        labels = get_button_labels()
+        send_image(render_layout(workbench_display, labels))
 
     def show_current_workbench():
         import FreeCADGui
@@ -94,7 +138,7 @@ def _init():
             display = getattr(wb, "MenuText", name) if wb else name
         except Exception:
             display = name
-        send_image(render_workbench(display))
+        show_layout(display)
 
     def setup():
         import FreeCAD
@@ -121,8 +165,7 @@ def _init():
             def slotOpenedDocument(self, doc):
                 show_current_workbench()
 
-        observer = DocObserver()
-        FreeCAD.addDocumentObserver(observer)
+        FreeCAD.addDocumentObserver(DocObserver())
         log("document observer added")
 
         try:
