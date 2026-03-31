@@ -11,6 +11,26 @@ Python library and CLI for controlling the 3Dconnexion SpacePilot HP (Logitech `
 
 ## Install
 
+Install the tools system-wide:
+
+```bash
+sudo pip install --break-system-packages .
+```
+
+Install the daemon as a system service:
+
+```bash
+sudo cp spacenavlcdd.service /etc/systemd/system/
+sudo cp 99-spacenavlcdd.rules /etc/udev/rules.d/
+sudo cp spacenavlcdd.toml /etc/spacenavlcdd.toml   # edit as needed
+sudo systemctl daemon-reload
+sudo udevadm control --reload-rules
+```
+
+The daemon starts automatically when the device is plugged in.
+
+For direct HID access (`spacepilotctl`) without the daemon, install via pipx:
+
 ```bash
 pipx install .
 ```

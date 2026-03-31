@@ -1,6 +1,8 @@
 """spacenavlcdd — SpacePilot LCD daemon.
 
 Owns the HID device and serves commands over a Unix socket.
+Watches the hidraw device file with inotify and exits when it's unplugged,
+so systemd restarts and re-runs on_connect when it's plugged back in.
 
 Socket protocol (line-based text):
   CLEAR
@@ -14,6 +16,8 @@ Each command returns OK or ERROR <message>.
 """
 
 import asyncio
+import ctypes
+import ctypes.util
 import os
 import sys
 import tomllib
@@ -26,8 +30,8 @@ from spacepilotctl import (
 )
 from easyhid import Enumeration
 
-SOCKET_PATH = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "spacenavlcdd.sock"
-CONFIG_PATH = Path.home() / ".config" / "spacenavlcdd.toml"
+SOCKET_PATH = Path("/run/spacenavlcdd.sock")
+CONFIG_PATH = Path("/etc/spacenavlcdd.toml")
 
 DEFAULT_CONFIG = {
     "on_connect": {
@@ -36,6 +40,40 @@ DEFAULT_CONFIG = {
         "image": "",
     }
 }
+
+# inotify constants
+_IN_DELETE_SELF = 0x400
+_IN_MOVE_SELF   = 0x800
+_O_NONBLOCK     = 0x800
+_O_CLOEXEC      = 0x80000
+
+_libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+
+
+def _inotify_fd(path: str) -> int:
+    """Return a non-blocking inotify fd watching path for deletion/move."""
+    fd = _libc.inotify_init1(_O_NONBLOCK | _O_CLOEXEC)
+    if fd < 0:
+        raise OSError(ctypes.get_errno(), "inotify_init1 failed")
+    wd = _libc.inotify_add_watch(fd, path.encode(), _IN_DELETE_SELF | _IN_MOVE_SELF)
+    if wd < 0:
+        os.close(fd)
+        raise OSError(ctypes.get_errno(), "inotify_add_watch failed")
+    return fd
+
+
+async def wait_for_disconnect(path: str) -> None:
+    """Resolve when the device file at path is deleted (device unplugged)."""
+    fd = _inotify_fd(path)
+    loop = asyncio.get_running_loop()
+    fut: asyncio.Future = loop.create_future()
+    loop.add_reader(fd, fut.set_result, None)
+    try:
+        await fut
+    finally:
+        loop.remove_reader(fd)
+        os.close(fd)
+    print("spacenavlcdd: device disconnected", file=sys.stderr, flush=True)
 
 
 def load_config() -> dict:
@@ -124,7 +162,6 @@ class SpaceNavLCDDaemon:
                             raise ValueError(f"unknown command: {verb}")
                         writer.write(b"OK\n")
                     except OSError as e:
-                        # HID write failed — device likely disconnected
                         print(f"spacenavlcdd: device error: {e}", file=sys.stderr)
                         writer.write(b"ERROR device disconnected\n")
                         await writer.drain()
@@ -154,11 +191,21 @@ async def run() -> None:
         SOCKET_PATH.unlink()
 
     server = await asyncio.start_unix_server(daemon.handle_client, path=str(SOCKET_PATH))
-    SOCKET_PATH.chmod(0o600)
+    SOCKET_PATH.chmod(0o666)
     print(f"spacenavlcdd: listening on {SOCKET_PATH}", flush=True)
 
+    disconnect = asyncio.create_task(wait_for_disconnect(daemon.dev.path))
+    serve = asyncio.create_task(server.serve_forever())
+
     async with server:
-        await server.serve_forever()
+        done, pending = await asyncio.wait(
+            [disconnect, serve],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for task in pending:
+            task.cancel()
+
+    sys.exit(0)
 
 
 def main() -> None:

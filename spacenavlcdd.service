@@ -4,11 +4,9 @@ After=local-fs.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/spacenavlcdd
-Restart=always
+ExecStart=/usr/local/bin/spacenavlcdd
+Restart=on-failure
 RestartSec=5
-# Limit restarts to avoid log spam when device is absent for a long time
-StartLimitIntervalSec=0
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target

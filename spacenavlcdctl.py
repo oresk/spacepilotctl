@@ -1,11 +1,10 @@
 """spacenavlcdctl — CLI client for spacenavlcdd."""
 
-import os
 import socket
 import sys
 from pathlib import Path
 
-SOCKET_PATH = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "spacenavlcdd.sock"
+SOCKET_PATH = Path("/run/spacenavlcdd.sock")
 
 
 def send(command: str) -> str:

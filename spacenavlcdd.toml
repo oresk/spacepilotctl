@@ -1,5 +1,5 @@
 # spacenavlcdd configuration
-# Copy to ~/.config/spacenavlcdd.toml
+# Install to /etc/spacenavlcdd.toml
 
 [on_connect]
 # Backlight state on startup: "on" or "off"
