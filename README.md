@@ -35,6 +35,28 @@ For direct HID access (`spacepilotctl`) without the daemon, install via pipx:
 pipx install .
 ```
 
+## FreeCAD plugin
+
+The plugin watches the active workbench and displays its name on the LCD.
+
+**Install (Flatpak FreeCAD):**
+
+```bash
+# Copy plugin into FreeCAD's Mod directory
+cp -r freecad/SpaceNavLCD ~/.var/app/org.freecad.FreeCAD/data/FreeCAD/Mod/
+
+# Allow FreeCAD to access the daemon socket
+flatpak override --user --filesystem=/run org.freecad.FreeCAD
+```
+
+**Install (native FreeCAD):**
+
+```bash
+cp -r freecad/SpaceNavLCD ~/.local/share/FreeCAD/Mod/
+```
+
+Restart FreeCAD. The LCD will update automatically when you switch workbenches.
+
 ## Usage
 
 ```bash
